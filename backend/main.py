@@ -1,3 +1,8 @@
+import json
+from decimal import Decimal
+from pathlib import Path
+
+from fastapi.encoders import jsonable_encoder
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from db import (
@@ -9,6 +14,7 @@ from db import (
 )
 
 app = FastAPI()
+DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 
 
 class DBConnectionRequest(BaseModel):
@@ -18,6 +24,22 @@ class DBConnectionRequest(BaseModel):
     database: str
     username: str
     password: str
+
+
+def _write_data_file(filename: str, payload: dict) -> None:
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    output_path = DATA_DIR / filename
+    output_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+
+def _decimal_encoder(value: Decimal):
+    if value == value.to_integral_value():
+        return int(value)
+    return float(value)
+
+
+def _to_json_safe(payload: dict) -> dict:
+    return jsonable_encoder(payload, custom_encoder={Decimal: _decimal_encoder})
 
 
 @app.post("/extract-schema")
@@ -41,11 +63,14 @@ def extract_db_schema(request: DBConnectionRequest):
 
         schema = extract_schema(engine)
 
-        return {
+        response = {
             "status": "success",
             "tables_found": len(schema),
             "schema": schema
         }
+        safe_response = _to_json_safe(response)
+        _write_data_file("schema.json", safe_response)
+        return safe_response
 
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -70,11 +95,14 @@ def profile_db_data(request: DBConnectionRequest):
         engine = create_engine_from_url(connection_url)
         profile = extract_data_profile(engine)
 
-        return {
+        response = {
             "status": "success",
             "tables_profiled": len(profile),
             "profile": profile,
         }
+        safe_response = _to_json_safe(response)
+        _write_data_file("profiling.json", safe_response)
+        return safe_response
 
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
