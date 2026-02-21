@@ -7,26 +7,18 @@ from typing import Any
 from google import genai
 from google.genai import types
 
-DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+from data_store import (
+    get_doc_file,
+    get_profiling_file,
+    get_schema_file,
+    read_json,
+    slugify_database_name,
+    write_json,
+)
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
 ENV_FILE = Path(__file__).resolve().parent / ".env"
-SCHEMA_FILE = DATA_DIR / "schema.json"
-PROFILING_FILE = DATA_DIR / "profiling.json"
-DOC_FILE = DATA_DIR / "doc.json"
 DEFAULT_MODEL = "gemini-flash-latest"
-
-
-def _read_json_file(path: Path) -> dict[str, Any]:
-    if not path.exists():
-        raise FileNotFoundError(f"Required file not found: {path}")
-
-    raw_text = path.read_text(encoding="utf-8").strip()
-    if not raw_text:
-        raise ValueError(f"Required file is empty: {path}")
-
-    try:
-        return json.loads(raw_text)
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"Invalid JSON in file {path}: {exc}") from exc
 
 
 def _load_env_file(path: Path = ENV_FILE) -> None:
@@ -182,10 +174,16 @@ Profiling JSON:
 
 
 def _normalize_document(
+    *,
     llm_payload: dict[str, Any],
     schema_payload: dict[str, Any],
     profiling_payload: dict[str, Any],
     model_name: str,
+    database: str,
+    database_slug: str,
+    schema_file: Path,
+    profiling_file: Path,
+    doc_file: Path,
 ) -> dict[str, Any]:
     schema_tables = schema_payload.get("schema", [])
     profile_tables = profiling_payload.get("profile", [])
@@ -246,11 +244,14 @@ def _normalize_document(
 
     return {
         "status": "success",
+        "database": database,
+        "database_slug": database_slug,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "model": model_name,
         "sources": {
-            "schema_file": "data/schema.json",
-            "profiling_file": "data/profiling.json",
+            "schema_file": schema_file.relative_to(PROJECT_ROOT).as_posix(),
+            "profiling_file": profiling_file.relative_to(PROJECT_ROOT).as_posix(),
+            "doc_file": doc_file.relative_to(PROJECT_ROOT).as_posix(),
             "tables_in_schema": len(schema_tables),
             "tables_in_profile": len(profile_tables),
         },
@@ -262,11 +263,17 @@ def _normalize_document(
     }
 
 
-def generate_business_document() -> dict[str, Any]:
+def generate_business_document(database: str) -> dict[str, Any]:
+    database_slug = slugify_database_name(database)
     api_key = _get_required_env_var("GEMINI_API_KEY")
     model_name = os.getenv("GEMINI_MODEL", DEFAULT_MODEL)
-    schema_payload = _read_json_file(SCHEMA_FILE)
-    profiling_payload = _read_json_file(PROFILING_FILE)
+
+    schema_file = get_schema_file(database)
+    profiling_file = get_profiling_file(database)
+    doc_file = get_doc_file(database, create_dir=True)
+
+    schema_payload = read_json(schema_file)
+    profiling_payload = read_json(profiling_file)
 
     prompt = _build_prompt(schema_payload, profiling_payload)
     client = _build_genai_client(api_key)
@@ -300,9 +307,11 @@ def generate_business_document() -> dict[str, Any]:
         schema_payload=schema_payload,
         profiling_payload=profiling_payload,
         model_name=model_name,
+        database=database,
+        database_slug=database_slug,
+        schema_file=schema_file,
+        profiling_file=profiling_file,
+        doc_file=doc_file,
     )
-
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    DOC_FILE.write_text(json.dumps(final_document, indent=2), encoding="utf-8")
-
+    write_json(doc_file, final_document)
     return final_document
