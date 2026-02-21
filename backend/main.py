@@ -5,6 +5,7 @@ from pathlib import Path
 from fastapi.encoders import jsonable_encoder
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
+from ai import generate_business_document
 from db import (
     build_connection_url,
     create_engine_from_url,
@@ -106,3 +107,17 @@ def profile_db_data(request: DBConnectionRequest):
 
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/generate-business-doc")
+def generate_db_business_doc():
+    try:
+        return generate_business_document()
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to generate business document: {e}"
+        )
