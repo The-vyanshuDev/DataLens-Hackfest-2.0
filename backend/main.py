@@ -62,7 +62,12 @@ def ensure_data_dir():
 @app.get("/health")
 def health():
     """Health check for load balancers and deployment platforms."""
-    return {"status": "ok"}
+    return {
+        "status": "ok",
+        "service": "DataLens API",
+        "docs": "/docs",
+        "endpoints": ["/databases", "/health"],
+    }
 
 
 class CredentialsSaveRequest(BaseModel):
