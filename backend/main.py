@@ -1,3 +1,4 @@
+import os
 import shutil
 import uuid
 from decimal import Decimal
@@ -37,18 +38,42 @@ from data_store import (
 app = FastAPI()
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
+# CORS: allow localhost by default; add production frontend via CORS_ORIGINS (comma-separated)
+_default_origins = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "https://datalens-indol.vercel.app",  # production frontend on Vercel
+]
+_extra_origins = [o.strip() for o in os.getenv("CORS_ORIGINS", "").split(",") if o.strip()]
+allow_origins = _default_origins + _extra_origins
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-    ],
+    allow_origins=allow_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.on_event("startup")
+def ensure_data_dir():
+    """Create data directory on startup so the app works on fresh deploys (e.g. Render)."""
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+
+@app.get("/")
+@app.get("/health")
+def health():
+    """Health check for load balancers and deployment platforms."""
+    return {
+        "status": "ok",
+        "service": "DataLens API",
+        "docs": "/docs",
+        "endpoints": ["/databases", "/health"],
+    }
 
 
 class CredentialsSaveRequest(BaseModel):
