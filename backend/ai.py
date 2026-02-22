@@ -18,7 +18,7 @@ from data_store import (
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 ENV_FILE = Path(__file__).resolve().parent / ".env"
-DEFAULT_MODEL = "gemini-flash-latest"
+GEMINI_MODEL = "gemini-flash-latest"
 
 
 def _load_env_file(path: Path = ENV_FILE) -> None:
@@ -266,7 +266,7 @@ def _normalize_document(
 def generate_business_document(database: str) -> dict[str, Any]:
     database_slug = slugify_database_name(database)
     api_key = _get_required_env_var("GEMINI_API_KEY")
-    model_name = os.getenv("GEMINI_MODEL", DEFAULT_MODEL)
+    model_name = GEMINI_MODEL
 
     schema_file = get_schema_file(database)
     profiling_file = get_profiling_file(database)

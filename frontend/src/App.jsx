@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import './App.css'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
@@ -253,6 +255,20 @@ function escapeMarkdownCell(value) {
   return String(value ?? '')
     .replace(/\|/g, '\\|')
     .replace(/\n/g, ' ')
+}
+
+function createChatMessage(role, text) {
+  const id =
+    typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(16).slice(2)}`
+
+  return {
+    id,
+    role,
+    text: String(text || ''),
+    createdAt: new Date().toISOString(),
+  }
 }
 
 function formatCompactNumber(value) {
@@ -647,6 +663,11 @@ function App() {
   const [showExportMenu, setShowExportMenu] = useState(false)
   const [isExporting, setIsExporting] = useState(false)
   const [exportError, setExportError] = useState('')
+  const [chatSessionId, setChatSessionId] = useState('')
+  const [chatInput, setChatInput] = useState('')
+  const [chatMessages, setChatMessages] = useState([])
+  const [chatLoading, setChatLoading] = useState(false)
+  const [chatError, setChatError] = useState('')
   const vizDragRef = useRef({
     active: false,
     startX: 0,
@@ -655,6 +676,7 @@ function App() {
     startTy: 0,
   })
   const exportMenuRef = useRef(null)
+  const chatThreadRef = useRef(null)
 
   const providerMap = useMemo(
     () =>
@@ -833,6 +855,25 @@ function App() {
       setShowExportMenu(false)
     }
   }, [isExportReady])
+
+  useEffect(() => {
+    if (screen !== 'dashboard' || !activeDatabase) return
+
+    setChatSessionId('')
+    setChatInput('')
+    setChatError('')
+    setChatMessages([
+      createChatMessage(
+        'assistant',
+        `Connected to ${activeDatabase}. I answer database-related questions only and can use read-only SQL when needed.`
+      ),
+    ])
+  }, [screen, activeDatabase])
+
+  useEffect(() => {
+    if (!chatThreadRef.current) return
+    chatThreadRef.current.scrollTop = chatThreadRef.current.scrollHeight
+  }, [chatMessages, chatLoading])
 
   const buildExportJsonPayload = () => {
     const database = String(activeDatabase || dashboardData.database || '').trim()
@@ -1082,6 +1123,64 @@ function App() {
       )
     } finally {
       setIsExporting(false)
+    }
+  }
+
+  const sendChatMessage = async () => {
+    const message = chatInput.trim()
+    if (!message || chatLoading) return
+
+    if (!activeDatabase) {
+      setChatError('No active database selected for chat.')
+      return
+    }
+
+    setChatError('')
+    setChatInput('')
+    setChatMessages((current) => [...current, createChatMessage('user', message)])
+    setChatLoading(true)
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/chat/message`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          database: activeDatabase,
+          message,
+          session_id: chatSessionId || undefined,
+          user_id: 'datalens-ui',
+        }),
+      })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(
+          typeof data.detail === 'string' ? data.detail : 'Failed to get agent response.'
+        )
+      }
+
+      if (typeof data.session_id === 'string' && data.session_id.trim()) {
+        setChatSessionId(data.session_id)
+      }
+
+      const reply =
+        typeof data.reply === 'string' && data.reply.trim()
+          ? data.reply.trim()
+          : 'I could not generate a response. Please try rephrasing your question.'
+
+      setChatMessages((current) => [...current, createChatMessage('assistant', reply)])
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'Failed to connect to chat service.'
+      setChatError(errorMessage)
+      setChatMessages((current) => [
+        ...current,
+        createChatMessage(
+          'assistant',
+          `I could not process that request. ${errorMessage}`
+        ),
+      ])
+    } finally {
+      setChatLoading(false)
     }
   }
 
@@ -1501,10 +1600,10 @@ function App() {
   }
 
   const renderStepIcon = (value) => {
-    if (value === 'success') return '✓'
-    if (value === 'active') return '↻'
-    if (value === 'error') return '!'
-    return '·'
+    if (value === 'success') return <span className="timeline-icon-glyph">✓</span>
+    if (value === 'active') return <span className="timeline-spinner" aria-hidden="true" />
+    if (value === 'error') return <span className="timeline-icon-glyph">!</span>
+    return <span className="timeline-icon-glyph">·</span>
   }
 
   if (screen === 'databases') {
@@ -2531,6 +2630,63 @@ function App() {
             )}
           </div>
         </section>
+
+        <aside className="dashboard-chat-sidebar" aria-label="AI chat sidebar">
+          <header className="chat-sidebar-head">
+            <div>
+              <p className="chat-kicker">DB AI Agent</p>
+              <h3>Ask DataLens</h3>
+            </div>
+            <span className="chat-db-pill">{activeDatabase || 'No DB'}</span>
+          </header>
+
+          <div className="chat-thread" ref={chatThreadRef}>
+            {chatMessages.map((item) => (
+              <article key={item.id} className={`chat-bubble ${item.role}`}>
+                {item.role === 'assistant' ? (
+                  <div className="chat-markdown">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{item.text}</ReactMarkdown>
+                  </div>
+                ) : (
+                  <p>{item.text}</p>
+                )}
+                <span>{item.role === 'assistant' ? 'Agent' : 'You'}</span>
+              </article>
+            ))}
+
+            {chatLoading ? (
+              <article className="chat-bubble assistant loading">
+                <p>Thinking...</p>
+                <span>Agent</span>
+              </article>
+            ) : null}
+          </div>
+
+          {chatError ? <p className="chat-error">{chatError}</p> : null}
+
+          <form
+            className="chat-composer"
+            onSubmit={(event) => {
+              event.preventDefault()
+              sendChatMessage()
+            }}
+          >
+            <textarea
+              value={chatInput}
+              onChange={(event) => setChatInput(event.target.value)}
+              placeholder="Ask about tables, columns, profiling, or read-only SQL..."
+              rows={3}
+              disabled={chatLoading || !activeDatabase}
+            />
+            <button
+              type="submit"
+              className="primary-btn chat-send-btn"
+              disabled={chatLoading || !chatInput.trim() || !activeDatabase}
+            >
+              {chatLoading ? 'Sending...' : 'Send'}
+            </button>
+          </form>
+        </aside>
       </main>
     )
   }
