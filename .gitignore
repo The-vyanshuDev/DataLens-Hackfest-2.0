@@ -3,10 +3,9 @@ backend/.env
 .venv
 .git
 data/
-backend/db_chat/.env
-backend/db_chat/__pycache__/
-backend/db_chat/.adk/session.db
-backend/db_chat/
+
+backend/chat_agent/.env
+backend/chat_agent/__pycache__/
 
 # Frontend (React/Vite)
 frontend/node_modules/
