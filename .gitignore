@@ -7,3 +7,18 @@ backend/db_chat/.env
 backend/db_chat/__pycache__/
 backend/db_chat/.adk/session.db
 backend/db_chat/
+
+# Frontend (React/Vite)
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+frontend/.vite/
+frontend/coverage/
+frontend/.env
+frontend/.env.*
+!frontend/.env.example
+frontend/*.local
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+frontend/pnpm-debug.log*
