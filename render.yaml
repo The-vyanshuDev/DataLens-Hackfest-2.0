@@ -10,5 +10,6 @@ services:
     envVars:
       - key: GEMINI_API_KEY
         sync: false
+      # Set in Render dashboard: https://data-lens-iota.vercel.app/ (your frontend origin)
       - key: CORS_ORIGINS
         sync: false

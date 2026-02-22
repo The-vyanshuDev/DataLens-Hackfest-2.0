@@ -45,7 +45,7 @@ _default_origins = [
     "http://127.0.0.1:5173",
     "http://localhost:3000",
     "http://127.0.0.1:3000",
-    "https://datalens-indol.vercel.app",  # production frontend on Vercel
+    "https://data-lens-iota.vercel.app/",  # production frontend on Vercel
 ]
 _extra_origins = [o.strip() for o in os.getenv("CORS_ORIGINS", "").split(",") if o.strip()]
 allow_origins = _default_origins + _extra_origins
